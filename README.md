@@ -1,9 +1,9 @@
 # terraform-ldap-components
 
-Crossplane CRDs and OpenTofu modules for managing the LDAP IAM topology of the
-kubed homelab cluster. Provides typed Kubernetes resources that compose from a
-low-level `Entry` primitive to create structured LDAP entries with consistent
-schemas, generated credentials, and Kubernetes Secret publication.
+Crossplane CRDs and OpenTofu modules for managing a structured LDAP IAM topology
+in a Kubernetes cluster. Provides typed Kubernetes resources that compose from a
+low-level `Entry` primitive to create LDAP entries with consistent schemas,
+generated credentials, and Kubernetes Secret publication.
 
 Mirrors the pattern of `terraform-keycloak-components` and
 `terraform-postgresql-postgresql`: each kind is a Crossplane Composite Resource
@@ -16,7 +16,7 @@ and has a corresponding OpenTofu module under `modules/<kind>/`.
 
 ### `ServiceAccount`
 
-Creates a service-account principal under `ou=services,dc=burbs`.
+Creates a service-account principal under `ou=services,dc=<base>`.
 
 - objectClasses: `inetOrgPerson`, `posixAccount`
 - Generates a random password and publishes it as a Kubernetes Secret
@@ -30,11 +30,11 @@ kind: ServiceAccount
 metadata:
   name: myapp
 spec:
-  mail: myapp@mail.kellyferrone.com
+  mail: myapp@example.com
   uidNumber: "1050"
   gidNumber: "2001"        # services primary group
   posixGroups:
-  - cn=media,ou=groups,dc=burbs
+  - cn=media,ou=groups,dc=example
   connectionSecret:
     namespace: myapp-ns
     name: myapp-ldap-creds
@@ -42,8 +42,8 @@ spec:
 
 ### `Group`
 
-Creates a posix group under `ou=groups,dc=burbs` (unix plane — Synology, sshd,
-Nextcloud folder permissions).
+Creates a posix group under `ou=groups,dc=<base>` (unix plane — NAS, sshd,
+application folder permissions).
 
 - objectClass: `posixGroup`
 - Holds `gidNumber` + `memberUid` (bare uid strings)
@@ -57,55 +57,54 @@ metadata:
 spec:
   gidNumber: "2020"
   members:
-  - kelly
-  - nextcloud
+  - alice
+  - myapp
 ```
 
 ### `Team`
 
-Creates a human cohort under `ou=teams,dc=burbs` (IAM plane).
+Creates a human cohort under `ou=teams,dc=<base>` (IAM plane).
 
 - objectClass: `groupOfNames`
 - Membership (`member`) uses full DNs → feeds the `memberOf` overlay → visible in
   Keycloak as a Group
-- Use for social/organizational cohorts of humans (family, friends); not for access
-  gating (that is what `Pool` is for)
+- Use for organizational cohorts of humans; not for access gating (that is what
+  `Pool` is for)
 
 ```yaml
 apiVersion: ldap.kubed.io/v1alpha1
 kind: Team
 metadata:
-  name: family
+  name: staff
 spec:
   members:
-  - uid=kelly,ou=users,dc=burbs
-  - uid=michele,ou=users,dc=burbs
+  - uid=alice,ou=users,dc=example
+  - uid=bob,ou=users,dc=example
 ```
 
 ### `Role`
 
-Creates a realm-wide capability under `ou=roles,dc=burbs` (IAM plane).
+Creates a realm-wide capability under `ou=roles,dc=<base>` (IAM plane).
 
 - objectClass: `groupOfNames`
 - Maps to a Keycloak **realm role**; each OIDC app is configured individually to
   honor it (opt-in, not automatic cascade)
-- Membership feeds `memberOf` overlay; humans joined by n8n workflow, SAs by label
-  selector
+- Membership feeds `memberOf` overlay; humans joined by external workflow, SAs by
+  label selector
 
-Built-in realm roles: `admins`, `editor`, `viewer` (+ optional `superadmin`,
-`guest`).
+Common realm roles: `admins`, `editor`, `viewer` (+ optional `superadmin`, `guest`).
 
 ```yaml
 apiVersion: ldap.kubed.io/v1alpha1
 kind: Role
 metadata:
   name: admins
-spec: {}   # members are managed externally (n8n / SA selector)
+spec: {}   # members are managed externally (workflow / SA selector)
 ```
 
 ### `Pool`
 
-Creates a per-app login surface under `ou=pools,dc=burbs` (IAM plane). A pool is
+Creates a per-app login surface under `ou=pools,dc=<base>` (IAM plane). A pool is
 the 1:1 counterpart to a Keycloak OIDC client.
 
 - objectClass: `groupOfNames`
@@ -114,28 +113,28 @@ the 1:1 counterpart to a Keycloak OIDC client.
   (`cn=<role>,cn=<pool>,ou=pools`) → maps to a Keycloak **client role**
 - Membership is **dynamic**: service accounts join via `serviceAccountSelector`
   (label match, same pattern as the postgres `Server` CRD); humans are pushed in by
-  n8n workflow
+  external workflow
 - Emits a matching Keycloak `OpenidClient` (1 pool = 1 client)
 - `owner` links the pool back to the `ServiceAccount` that runs the app
 
-One service account can own multiple pools (e.g. `drupal` owns one pool per site).
+One service account can own multiple pools (e.g. a CMS app owns one pool per site).
 
 ```yaml
 apiVersion: ldap.kubed.io/v1alpha1
 kind: Pool
 metadata:
-  name: nextcloud
+  name: myapp
 spec:
-  owner: uid=nextcloud,ou=services,dc=burbs
+  owner: uid=myapp,ou=services,dc=example
   roles:
   - name: admin
-  - name: media-manager
+  - name: editor
   serviceAccountSelector:
     matchLabels:
-      ldap.kubed.io/pool.nextcloud: "true"
+      ldap.kubed.io/pool.myapp: "true"
   connectionSecret:
-    namespace: cloud
-    name: nextcloud-ldap-pool-creds
+    namespace: myapp-ns
+    name: myapp-ldap-pool-creds
 ```
 
 ## Module layout
@@ -157,14 +156,13 @@ crd/
 
 ## Relationship to `ldap-entry`
 
-The legacy `modules/ldap-entry` module (the generic `Entry` kind) remains in the
-cluster repo as the **low-level primitive** these typed kinds compose from. It
-handles the raw `ldap_entry` resource + `random_password` + connection Secret
-publishing. The kinds in this repo are the typed, opinionated layer on top.
+The `ldap-entry` module (the generic `Entry` kind) is the **low-level primitive**
+these typed kinds compose from. It handles the raw `ldap_entry` resource +
+`random_password` + connection Secret publishing. The kinds in this repo are the
+typed, opinionated layer on top.
 
 ## References
 
 - [OpenTofu LDAP Provider](https://search.opentofu.org/provider/elastic-infra/ldap/latest)
 - [OpenLDAP Overlays — memberOf](https://www.openldap.org/doc/admin24/overlays.html)
 - [Crossplane Composite Resources](https://docs.crossplane.io/latest/concepts/composite-resources/)
-- [IAM plan](https://github.com/kubed-io/cluster/blob/main/prompts/kubed-iam.plan.md)
