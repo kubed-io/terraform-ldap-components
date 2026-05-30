@@ -48,6 +48,13 @@ application folder permissions).
 - objectClass: `posixGroup`
 - Holds `gidNumber` + `memberUid` (bare uid strings)
 - Does **not** populate `memberOf` — posix groups are unix-plane only
+- `members` are bare `uid`s, **not** DNs — a consumer (NSS, NAS) resolves each by a
+  flat subtree search for a `posixAccount` with that `uid`. Service accounts can be
+  members too (they are `posixAccount`s), as long as the consumer's user search
+  base covers `ou=services`.
+- **Invariant:** `uid` and `uidNumber` must be globally unique across `ou=users` and
+  `ou=services`. `memberUid` cannot distinguish two OUs, and there is no referential
+  integrity on it — so a user and a service account must never share a name/number.
 
 ```yaml
 apiVersion: ldap.kubed.io/v1alpha1
@@ -56,7 +63,7 @@ metadata:
   name: media
 spec:
   gidNumber: "2020"
-  members:
+  members:        # bare uids; may be users or service accounts
   - alice
   - myapp
 ```
