@@ -1,4 +1,11 @@
-mock_provider "ldap" {}
+mock_provider "ldap" {
+  # team not yet present → the live-members lookup returns an empty list
+  mock_data "ldap_entries" {
+    defaults = {
+      entries = []
+    }
+  }
+}
 
 variables {
   name    = "staff"
@@ -19,12 +26,13 @@ run "builds_dn_and_core_attrs" {
   }
 }
 
-run "seeds_owner_as_member" {
+run "seeds_owner_as_member_when_empty" {
   command = plan
 
+  # with no existing entry (mock returns empty), members = [owner]
   assert {
     condition     = jsondecode(ldap_entry.this.data_json).member == ["uid=alice,ou=users,dc=example"]
-    error_message = "owner should be seeded as the single initial member"
+    error_message = "owner should be the sole seed member when the team has none yet"
   }
   assert {
     condition     = jsondecode(ldap_entry.this.data_json).owner == ["uid=alice,ou=users,dc=example"]
@@ -32,12 +40,13 @@ run "seeds_owner_as_member" {
   }
 }
 
-run "ignores_member_attribute" {
+run "does_not_ignore_member" {
   command = plan
 
+  # membership is preserved via the data-source merge, NOT ignore_attributes
   assert {
-    condition     = contains(ldap_entry.this.ignore_attributes, "member")
-    error_message = "member must be ignored so an external tool owns membership"
+    condition     = ldap_entry.this.ignore_attributes == null
+    error_message = "member must NOT be ignored (preserved via the ldap_entries merge instead)"
   }
 }
 

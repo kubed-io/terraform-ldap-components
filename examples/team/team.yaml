@@ -1,8 +1,8 @@
 apiVersion: ldap.kubed.io/v1alpha1
 kind: Team
 metadata:
-  name: staff
+  name: kubed-test-team
 spec:
-  baseDn: ou=teams,dc=example
-  description: Internal staff
-  owner: uid=alice,ou=users,dc=example   # seed member; real membership filled externally
+  baseDn: ou=teams,dc=burbs
+  description: Kubed test cohort of humans (members filled externally)
+  owner: uid=kelly,ou=users,dc=burbs   # seed member; real membership filled externally

@@ -1,4 +1,11 @@
-mock_provider "ldap" {}
+mock_provider "ldap" {
+  # client/role-children not yet present → live-members lookups return empty lists
+  mock_data "ldap_entries" {
+    defaults = {
+      entries = []
+    }
+  }
+}
 
 variables {
   name    = "nextcloud"
@@ -19,20 +26,20 @@ run "builds_root_dn_and_class" {
   }
 }
 
-run "seeds_owner_and_ignores_member_on_root" {
+run "seeds_owner_on_root_when_empty" {
   command = plan
 
   assert {
     condition     = jsondecode(ldap_entry.root.data_json).member == ["uid=nextcloud,ou=services,dc=example"]
-    error_message = "owner should be seeded as the root's initial member"
+    error_message = "owner should be the sole seed member on the root when empty"
   }
   assert {
     condition     = jsondecode(ldap_entry.root.data_json).owner == ["uid=nextcloud,ou=services,dc=example"]
     error_message = "owner attribute should be written on the root"
   }
   assert {
-    condition     = contains(ldap_entry.root.ignore_attributes, "member")
-    error_message = "root member must be ignored (external membership)"
+    condition     = ldap_entry.root.ignore_attributes == null
+    error_message = "root member must NOT be ignored (preserved via the ldap_entries merge)"
   }
 }
 
@@ -88,10 +95,10 @@ run "creates_role_children" {
   }
   assert {
     condition     = jsondecode(ldap_entry.role["admin"].data_json).member == ["uid=nextcloud,ou=services,dc=example"]
-    error_message = "each role child should seed owner as its initial member"
+    error_message = "each role child should seed owner as its initial member when empty"
   }
   assert {
-    condition     = contains(ldap_entry.role["admin"].ignore_attributes, "member")
-    error_message = "each role child's member must be ignored"
+    condition     = ldap_entry.role["admin"].ignore_attributes == null
+    error_message = "each role child's member must NOT be ignored (preserved via merge)"
   }
 }
