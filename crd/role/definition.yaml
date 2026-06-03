@@ -1,0 +1,63 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: roles.ldap.kubed.io
+  labels:
+    # groupofnames gives the owner + seeAlso/category/org/orgUnit SCHEMA from the shared
+    # component. Role intentionally does NOT carry the patch-and-transform label: it wires
+    # everything itself in its go-template (the composition has no patch list).
+    ldap.kubed.io/groupofnames: "true"
+spec:
+  scope: Cluster
+  group: ldap.kubed.io
+  names:
+    kind: Role
+    plural: roles
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - baseDn
+            - owner
+            properties:
+              # baseDn + description injected by the shared component
+              # owner + seeAlso/category/org/orgUnit injected by the shared component (groupofnames)
+              members:
+                type: array
+                default: []
+                description: Explicit member DNs (any subject). Authoritative, unioned with selector matches.
+                items:
+                  type: string
+              serviceAccountSelector:
+                type: object
+                description: |
+                  Selects ServiceAccount CRs by label; each match's status.dn is unioned into
+                  the authoritative member list. (Resolved in the composition via ExtraResources.)
+                properties:
+                  matchLabels:
+                    type: object
+                    description: Labels a ServiceAccount must carry to be included.
+                    x-kubernetes-preserve-unknown-fields: true
+          status:
+            type: object
+            description: Observed state.
+            properties:
+              dn:
+                type: string
+                description: The full DN of the created role.
+              members:
+                type: array
+                description: The resolved authoritative member DNs written to the role.
+                items:
+                  type: string
+              share:
+                type: object
+                description: Freeform module outputs.
+                x-kubernetes-preserve-unknown-fields: true

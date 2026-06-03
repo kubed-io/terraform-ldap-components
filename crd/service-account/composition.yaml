@@ -1,0 +1,104 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: serviceaccounts.ldap.kubed.io
+  labels:
+    ldap.kubed.io/has-mail: "true"
+    ldap.kubed.io/patch-and-transform: "true"
+spec:
+  writeConnectionSecretsToNamespace: crossplane
+  compositeTypeRef:
+    apiVersion: ldap.kubed.io/v1alpha1
+    kind: ServiceAccount
+  mode: Pipeline
+  pipeline:
+  - step: module
+    functionRef:
+      name: patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: workspace
+        base:
+          apiVersion: opentofu.upbound.io/v1beta1
+          kind: Workspace
+          metadata:
+            name: service-account
+            annotations:
+              kubernetes.io/description: |
+                Creates an LDAP service account (inetOrgPerson + posixAccount) with a
+                generated or supplied password, published as a connection secret.
+          spec:
+            providerConfigRef:
+              name: ldap
+            forProvider:
+              source: Remote
+              module: github.com/kubed-io/terraform-ldap-components//modules/service-account?ref=main
+              varmap: {}
+            writeConnectionSecretToRef:
+              namespace: crossplane
+              name: ldap-creds
+        patches:
+
+        # workspace metadata.name = "<cr>.serviceaccounts.ldap"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s.serviceaccounts.ldap"
+
+        # external-name = "<cr>-serviceaccount"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.annotations[crossplane.io/external-name]
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-serviceaccount"
+
+        # --- kind-unique varmap bindings (commons come from the shared component) ---
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.posix
+          toFieldPath: spec.forProvider.varmap.posix
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.sn
+          toFieldPath: spec.forProvider.varmap.sn
+          policy:
+            fromFieldPath: Optional
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.password
+          toFieldPath: spec.forProvider.varmap.password
+          policy:
+            fromFieldPath: Optional
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.passwordPolicy
+          toFieldPath: spec.forProvider.varmap.password_policy
+          policy:
+            fromFieldPath: Optional
+
+        # --- connection secret (keys: username, password) ---
+        # default name <resource-name>-ldap-creds
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-ldap-creds"
+        # optional overrides
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.connectionSecret.name
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          policy:
+            fromFieldPath: Optional
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.connectionSecret.namespace
+          toFieldPath: spec.writeConnectionSecretToRef.namespace
+          policy:
+            fromFieldPath: Optional

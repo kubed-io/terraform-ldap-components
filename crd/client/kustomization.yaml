@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+metadata:
+  name: ldap-client-crd
+namespace: crossplane
+resources:
+- definition.yaml
+- composition.yaml
+components:
+- ../_shared
+generatorOptions:
+  disableNameSuffixHash: true
+labels:
+- pairs:
+    app.kubernetes.io/part-of: crossplane
+    app.kubernetes.io/component: ldap
+    app.kubernetes.io/name: ldap-client

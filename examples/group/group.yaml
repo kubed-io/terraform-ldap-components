@@ -1,0 +1,11 @@
+apiVersion: ldap.kubed.io/v1alpha1
+kind: Group
+metadata:
+  name: media
+spec:
+  baseDn: ou=groups,dc=example
+  gidNumber: "2020"
+  description: Access to the media shared folder
+  members:                 # curated bare uids (users and/or service accounts)
+  - alice
+  - myapp

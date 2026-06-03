@@ -1,0 +1,70 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: groups.ldap.kubed.io
+  labels:
+    ldap.kubed.io/has-mail: "true"
+    ldap.kubed.io/patch-and-transform: "true"
+spec:
+  writeConnectionSecretsToNamespace: crossplane
+  compositeTypeRef:
+    apiVersion: ldap.kubed.io/v1alpha1
+    kind: Group
+  mode: Pipeline
+  pipeline:
+  - step: module
+    functionRef:
+      name: patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: workspace
+        base:
+          apiVersion: opentofu.upbound.io/v1beta1
+          kind: Workspace
+          metadata:
+            name: group
+            annotations:
+              kubernetes.io/description: |
+                Creates a POSIX group (posixGroup) on the unix plane.
+          spec:
+            providerConfigRef:
+              name: ldap
+            forProvider:
+              source: Remote
+              module: github.com/kubed-io/terraform-ldap-components//modules/group?ref=main
+              varmap: {}
+        patches:
+
+        # workspace metadata.name = "<cr>.groups.ldap"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s.groups.ldap"
+
+        # external-name = "<cr>-group"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.annotations[crossplane.io/external-name]
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-group"
+
+        # --- kind-unique varmap bindings ---
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.gidNumber
+          toFieldPath: spec.forProvider.varmap.gid_number
+          policy:
+            fromFieldPath: Required
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.members
+          toFieldPath: spec.forProvider.varmap.members
+          policy:
+            fromFieldPath: Optional

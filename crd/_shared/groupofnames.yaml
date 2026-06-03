@@ -1,0 +1,96 @@
+# Opt-in (label ldap.kubed.io/groupofnames): the IAM descriptive-key bundle for the
+# groupOfNames kinds (team, role, client) — owner + seeAlso/category/org/orgUnit.
+#
+# Schema is gated by `groupofnames` alone (team, role, client).
+# The varmap patches additionally require `patch-and-transform`, so they land only on
+# team + client; role wires these itself inside its go-template (it has no patch list).
+
+# --- schema (team, role, client) ---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: groupofnames-schema
+patch: |
+  - op: add
+    path: /spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/owner
+    value:
+      type: string
+      description: DN of the administrator; also the seed member (groupOfNames needs >=1).
+  - op: add
+    path: /spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/seeAlso
+    value:
+      type: string
+      nullable: true
+      description: DN cross-reference to a related entry (seeAlso).
+  - op: add
+    path: /spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/category
+    value:
+      type: string
+      nullable: true
+      description: Free-text classification tag (businessCategory).
+  - op: add
+    path: /spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/org
+    value:
+      type: string
+      nullable: true
+      description: Organization-name tag (o).
+  - op: add
+    path: /spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/orgUnit
+    value:
+      type: string
+      nullable: true
+      description: Organizational-unit tag (ou) on the entry (a label, not the DN's structural ou).
+target:
+  kind: CompositeResourceDefinition
+  labelSelector: ldap.kubed.io/groupofnames=true
+
+# --- varmap (team, client — NOT role) ---
+---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: groupofnames-varmap
+patch: |
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: FromCompositeFieldPath
+      fromFieldPath: spec.owner
+      toFieldPath: spec.forProvider.varmap.owner
+      policy:
+        fromFieldPath: Required
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: FromCompositeFieldPath
+      fromFieldPath: spec.seeAlso
+      toFieldPath: spec.forProvider.varmap.see_also
+      policy:
+        fromFieldPath: Optional
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: FromCompositeFieldPath
+      fromFieldPath: spec.category
+      toFieldPath: spec.forProvider.varmap.category
+      policy:
+        fromFieldPath: Optional
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: FromCompositeFieldPath
+      fromFieldPath: spec.org
+      toFieldPath: spec.forProvider.varmap.org
+      policy:
+        fromFieldPath: Optional
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: FromCompositeFieldPath
+      fromFieldPath: spec.orgUnit
+      toFieldPath: spec.forProvider.varmap.org_unit
+      policy:
+        fromFieldPath: Optional
+target:
+  kind: Composition
+  labelSelector: ldap.kubed.io/groupofnames=true,ldap.kubed.io/patch-and-transform=true

@@ -1,0 +1,109 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: serviceaccounts.ldap.kubed.io
+  labels:
+    # opt into the shared mail attribute + the patch-and-transform workspace scaffold
+    ldap.kubed.io/has-mail: "true"
+    ldap.kubed.io/patch-and-transform: "true"
+spec:
+  scope: Cluster
+  group: ldap.kubed.io
+  names:
+    kind: ServiceAccount
+    plural: serviceaccounts
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - baseDn
+            - posix
+            properties:
+              # baseDn + description injected by the shared component
+              # mail injected by the shared component (has-mail)
+              posix:
+                type: object
+                description: The unix-plane attributes (the /etc/passwd fields).
+                required:
+                - uidNumber
+                - gidNumber
+                properties:
+                  uidNumber:
+                    type: string
+                    description: POSIX uidNumber; globally unique across users + services.
+                  gidNumber:
+                    type: string
+                    description: PRIMARY group only (gidNumber).
+                  homeDirectory:
+                    type: string
+                    nullable: true
+                    description: Defaults to /home/<name>.
+                  loginShell:
+                    type: string
+                    nullable: true
+                    description: Defaults to /usr/sbin/nologin.
+              sn:
+                type: string
+                nullable: true
+                description: Surname; defaults to the name.
+              password:
+                type: string
+                nullable: true
+                description: |
+                  Bring-your-own userPassword. When set, the module uses it verbatim, ignores
+                  passwordPolicy, and does NOT publish a password in the connection secret
+                  (the caller already has it). Leave unset to generate one.
+              passwordPolicy:
+                type: object
+                nullable: true
+                description: Generation policy for the userPassword (ignored when password is set).
+                properties:
+                  length:
+                    type: integer
+                  special:
+                    type: boolean
+                  numeric:
+                    type: boolean
+                  upper:
+                    type: boolean
+                  lower:
+                    type: boolean
+                  minSpecial:
+                    type: integer
+                  minNumeric:
+                    type: integer
+                  minUpper:
+                    type: integer
+                  minLower:
+                    type: integer
+                  overrideSpecial:
+                    type: string
+              connectionSecret:
+                type: object
+                nullable: true
+                description: Where to publish the connection secret (keys username, password).
+                properties:
+                  namespace:
+                    type: string
+                    description: Namespace for the connection secret. Defaults to crossplane.
+                  name:
+                    type: string
+                    description: Name for the connection secret. Defaults to <resource-name>-ldap-creds.
+          status:
+            type: object
+            description: Observed state.
+            properties:
+              dn:
+                type: string
+                description: The full DN of the created service account.
+              share:
+                type: object
+                description: Freeform module outputs.
+                x-kubernetes-preserve-unknown-fields: true

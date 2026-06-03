@@ -1,0 +1,51 @@
+# Universal: every kind has baseDn + description.
+# Schema goes onto ALL XRDs (no selector). The matching varmap patches are gated to
+# the patch-and-transform kinds (role wires these itself inside its go-template).
+
+# --- schema: baseDn + description on every XRD ---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: common-schema
+patch: |
+  - op: add
+    path: /spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/baseDn
+    value:
+      type: string
+      description: Parent DN the entry is created under (placement). The RDN is derived by the kind.
+  - op: add
+    path: /spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/description
+    value:
+      type: string
+      nullable: true
+      description: Human-readable description stored on the entry.
+target:
+  kind: CompositeResourceDefinition
+  group: apiextensions.crossplane.io
+
+# --- varmap: baseDn + description on the patch-and-transform compositions ---
+---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: common-varmap
+patch: |
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: FromCompositeFieldPath
+      fromFieldPath: spec.baseDn
+      toFieldPath: spec.forProvider.varmap.base_dn
+      policy:
+        fromFieldPath: Required
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: FromCompositeFieldPath
+      fromFieldPath: spec.description
+      toFieldPath: spec.forProvider.varmap.description
+      policy:
+        fromFieldPath: Optional
+target:
+  kind: Composition
+  labelSelector: ldap.kubed.io/patch-and-transform=true

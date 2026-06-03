@@ -1,0 +1,16 @@
+apiVersion: ldap.kubed.io/v1alpha1
+kind: Role
+metadata:
+  name: admins
+spec:
+  baseDn: ou=roles,dc=example
+  description: Full admin across apps that honor it.
+  owner: uid=alice,ou=users,dc=example
+  members:                          # explicit DNs (any subject)
+  - uid=alice,ou=users,dc=example
+  - uid=bob,ou=users,dc=example
+  # service accounts opt in by carrying the label below; each match's status.dn is
+  # unioned into the authoritative member list:
+  serviceAccountSelector:
+    matchLabels:
+      ldap.kubed.io/role.admins: "true"

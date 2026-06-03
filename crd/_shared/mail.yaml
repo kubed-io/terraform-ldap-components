@@ -1,0 +1,37 @@
+# Opt-in (label ldap.kubed.io/has-mail): the mail attribute.
+# Used by service-account (inetOrgPerson) and group (via extensibleObject).
+
+# --- schema ---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: mail-schema
+patch: |
+  - op: add
+    path: /spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/mail
+    value:
+      type: string
+      nullable: true
+      description: Email address (the LDAP mail attribute).
+target:
+  kind: CompositeResourceDefinition
+  labelSelector: ldap.kubed.io/has-mail=true
+
+# --- varmap ---
+---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: mail-varmap
+patch: |
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: FromCompositeFieldPath
+      fromFieldPath: spec.mail
+      toFieldPath: spec.forProvider.varmap.mail
+      policy:
+        fromFieldPath: Optional
+target:
+  kind: Composition
+  labelSelector: ldap.kubed.io/has-mail=true

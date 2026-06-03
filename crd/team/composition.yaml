@@ -1,0 +1,61 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: teams.ldap.kubed.io
+  labels:
+    ldap.kubed.io/groupofnames: "true"
+    ldap.kubed.io/patch-and-transform: "true"
+spec:
+  writeConnectionSecretsToNamespace: crossplane
+  compositeTypeRef:
+    apiVersion: ldap.kubed.io/v1alpha1
+    kind: Team
+  mode: Pipeline
+  pipeline:
+  - step: module
+    functionRef:
+      name: patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: workspace
+        base:
+          apiVersion: opentofu.upbound.io/v1beta1
+          kind: Workspace
+          metadata:
+            name: team
+            annotations:
+              kubernetes.io/description: |
+                Creates a cohort of humans (groupOfNames) on the IAM plane.
+                Members are externally managed; the module seeds owner then ignores member.
+          spec:
+            providerConfigRef:
+              name: ldap
+            forProvider:
+              source: Remote
+              module: github.com/kubed-io/terraform-ldap-components//modules/team?ref=main
+              varmap: {}
+        patches:
+
+        # workspace metadata.name = "<cr>.teams.ldap"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s.teams.ldap"
+
+        # external-name = "<cr>-team"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.annotations[crossplane.io/external-name]
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-team"
+
+        # baseDn/description/owner/seeAlso/... + varmap.name + status come from the shared component

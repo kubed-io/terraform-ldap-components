@@ -1,0 +1,25 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: roles.ldap.kubed.io
+  labels:
+    ldap.kubed.io/groupofnames: "true"
+spec:
+  writeConnectionSecretsToNamespace: crossplane
+  compositeTypeRef:
+    apiVersion: ldap.kubed.io/v1alpha1
+    kind: Role
+  mode: Pipeline
+  pipeline:
+  # Single go-templating step: select ServiceAccounts (ExtraResources), union their
+  # status.dn with spec.members, emit the Workspace + publish status. The template body
+  # lives in composition.tpl and is embedded here by kustomize (see kustomization.yaml).
+  - step: render-workspace
+    functionRef:
+      name: go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: "# replaced by kustomize from composition.tpl"

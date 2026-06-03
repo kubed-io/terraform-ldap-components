@@ -1,0 +1,58 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: clients.ldap.kubed.io
+  labels:
+    ldap.kubed.io/groupofnames: "true"
+    ldap.kubed.io/patch-and-transform: "true"
+spec:
+  scope: Cluster
+  group: ldap.kubed.io
+  names:
+    kind: Client
+    plural: clients
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - baseDn
+            - owner
+            properties:
+              # baseDn + description injected by the shared component
+              # owner + seeAlso/category/org/orgUnit injected by the shared component (groupofnames)
+              url:
+                type: string
+                nullable: true
+                description: App URL stored as labeledURI on the client root.
+              roles:
+                type: array
+                default: []
+                description: Client roles; each becomes a child groupOfNames under the client.
+                items:
+                  type: object
+                  required:
+                  - name
+                  properties:
+                    name:
+                      type: string
+                    description:
+                      type: string
+                      nullable: true
+          status:
+            type: object
+            description: Observed state.
+            properties:
+              dn:
+                type: string
+                description: The full DN of the created client root.
+              share:
+                type: object
+                description: Freeform module outputs (includes role_dns).
+                x-kubernetes-preserve-unknown-fields: true

@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+metadata:
+  name: ldap-role-crd
+namespace: crossplane
+resources:
+- definition.yaml
+- composition.yaml
+components:
+- ../_shared
+generatorOptions:
+  disableNameSuffixHash: true
+labels:
+- pairs:
+    app.kubernetes.io/part-of: crossplane
+    app.kubernetes.io/component: ldap
+    app.kubernetes.io/name: ldap-role
+# embed the go-template body from composition.tpl into the composition's inline.template
+# (local-only ConfigMap slurps the file; replacement copies it into the deep pipeline key)
+configMapGenerator:
+- name: role-template
+  files:
+  - composition.tpl
+  options:
+    annotations:
+      config.kubernetes.io/local-config: "true"
+replacements:
+- source:
+    kind: ConfigMap
+    name: role-template
+    fieldPath: data.composition\.tpl
+  targets:
+  - select:
+      kind: Composition
+    fieldPaths:
+    - spec.pipeline.[step=render-workspace].input.inline.template

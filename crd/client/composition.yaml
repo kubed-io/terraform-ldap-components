@@ -1,0 +1,71 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: clients.ldap.kubed.io
+  labels:
+    ldap.kubed.io/groupofnames: "true"
+    ldap.kubed.io/patch-and-transform: "true"
+spec:
+  writeConnectionSecretsToNamespace: crossplane
+  compositeTypeRef:
+    apiVersion: ldap.kubed.io/v1alpha1
+    kind: Client
+  mode: Pipeline
+  pipeline:
+  - step: module
+    functionRef:
+      name: patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: workspace
+        base:
+          apiVersion: opentofu.upbound.io/v1beta1
+          kind: Workspace
+          metadata:
+            name: client
+            annotations:
+              kubernetes.io/description: |
+                Creates an app login surface (groupOfNames root + client-role children)
+                on the IAM plane. Membership is externally managed; the client holds no secret.
+          spec:
+            providerConfigRef:
+              name: ldap
+            forProvider:
+              source: Remote
+              module: github.com/kubed-io/terraform-ldap-components//modules/client?ref=main
+              varmap: {}
+        patches:
+
+        # workspace metadata.name = "<cr>.clients.ldap"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s.clients.ldap"
+
+        # external-name = "<cr>-client"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.annotations[crossplane.io/external-name]
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-client"
+
+        # --- kind-unique varmap bindings ---
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.roles
+          toFieldPath: spec.forProvider.varmap.roles
+          policy:
+            fromFieldPath: Optional
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.url
+          toFieldPath: spec.forProvider.varmap.url
+          policy:
+            fromFieldPath: Optional

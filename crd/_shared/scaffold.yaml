@@ -1,0 +1,34 @@
+# Opt-in (label ldap.kubed.io/patch-and-transform): the workspace wiring that is
+# IDENTICAL across the four non-role kinds:
+#   - varmap.name  ← composite metadata.name  (the bare CR name → the LDAP RDN)
+#   - status.share ← all module outputs
+#   - status.dn    ← the module's dn output
+#
+# The kind-specific name Format patches (workspace metadata.name = "%s.<plural>.ldap"
+# and external-name = "%s-<kind>") stay in each composition — they differ per kind.
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: scaffold-varmap-status
+patch: |
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: FromCompositeFieldPath
+      fromFieldPath: metadata.name
+      toFieldPath: spec.forProvider.varmap.name
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: ToCompositeFieldPath
+      fromFieldPath: status.atProvider.outputs
+      toFieldPath: status.share
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: ToCompositeFieldPath
+      fromFieldPath: status.atProvider.outputs.dn
+      toFieldPath: status.dn
+target:
+  kind: Composition
+  labelSelector: ldap.kubed.io/patch-and-transform=true
