@@ -67,7 +67,7 @@ metadata:
     crossplane.io/external-name: {{ $name }}-role
 spec:
   providerConfigRef:
-    name: ldap
+    name: {{ $spec.serverRef.name | default "ldap" }}
   forProvider:
     source: Remote
     module: github.com/kubed-io/terraform-ldap-components//modules/role?ref=main

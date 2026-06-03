@@ -1,11 +1,11 @@
 apiVersion: ldap.kubed.io/v1alpha1
 kind: Group
 metadata:
-  name: media
+  name: kubed-test-group
 spec:
-  baseDn: ou=groups,dc=example
-  gidNumber: "2020"
-  description: Access to the media shared folder
+  baseDn: ou=groups,dc=burbs
+  gidNumber: "9020"
+  description: Kubed test posix group (mixes a human and a service account)
   members:                 # curated bare uids (users and/or service accounts)
-  - alice
-  - myapp
+  - kelly                  # existing human in ou=users
+  - kubed-test-sa          # the service account from the service-account example

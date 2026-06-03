@@ -4,6 +4,7 @@ metadata:
   name: ldap-crds
 # All five LDAP IAM CRDs. Each kind pulls common schema + wiring from ../_shared
 # (a label-driven kustomize Component); this file just composes the kinds together.
+namespace: data
 resources:
 - service-account
 - group

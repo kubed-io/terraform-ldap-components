@@ -5,9 +5,11 @@ locals {
   # mail isn't in posixGroup, so pull in extensibleObject only when it's set.
   object_class = concat(["posixGroup"], var.mail != null ? ["extensibleObject"] : [])
 
+  # NOTE: cn is the RDN (dn = cn=<name>,...). The LDAP server adds it implicitly from
+  # the DN, and the provider ignores it on read — so we must NOT write cn into data_json
+  # or a modify re-adds it and the server rejects with "Attribute Or Value Exists" (20).
   entry = {
     objectClass = local.object_class
-    cn          = [local.name]
     gidNumber   = [var.gid_number]
     # set → sorted list so the rendered JSON is order-stable (no spurious diffs)
     memberUid   = sort(tolist(var.members))

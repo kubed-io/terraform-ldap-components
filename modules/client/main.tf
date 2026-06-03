@@ -5,9 +5,11 @@ locals {
   # labeledURI isn't in groupOfNames, so pull in labeledURIObject only when url is set.
   root_object_class = concat(["groupOfNames"], var.url != null ? ["labeledURIObject"] : [])
 
+  # NOTE: cn is the RDN on the root and every role child (dn = cn=<name>,...); omitted
+  # from data (server adds it implicitly; writing it makes a modify re-add it → LDAP
+  # error 20 "Attribute Or Value Exists").
   root_entry = {
     objectClass      = local.root_object_class
-    cn               = [local.name]
     owner            = [var.owner]
     # seed owner as the initial member to satisfy the >=1-member MUST; membership is
     # ignored below so an external tool owns it.
@@ -39,7 +41,6 @@ resource "ldap_entry" "role" {
   data_json = jsonencode(merge(
     {
       objectClass = ["groupOfNames"]
-      cn          = [each.value.name]
       owner       = [var.owner]
       member      = [var.owner] # seed for the >=1-member MUST; ignored below
     },

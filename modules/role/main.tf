@@ -7,9 +7,10 @@ locals {
   members = length(var.members) > 0 ? sort(tolist(var.members)) : [var.owner]
 
   # groupOfNames carries all of these as MAY natively — no aux objectClass.
+  # NOTE: cn is the RDN (dn = cn=<name>,...); omitted from data (server adds it
+  # implicitly; writing it makes a modify re-add it → LDAP error 20).
   entry = {
     objectClass      = ["groupOfNames"]
-    cn               = [local.name]
     owner            = [var.owner]
     member           = local.members
     description      = compact([var.description])

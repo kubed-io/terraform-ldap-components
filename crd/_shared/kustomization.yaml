@@ -6,12 +6,17 @@ kind: Component
 # A kind opts in by putting the matching label on BOTH its definition and its
 # composition; unlabeled transformers (common.yaml schema) apply everywhere.
 #
+# common.yaml + server-ref.yaml inject universal schema (baseDn, description, serverRef)
+# onto every XRD with no label needed.
+#
 # Labels (all under ldap.kubed.io/):
 #   has-mail            → mail schema + varmap patch          (service-account, group)
 #   groupofnames        → owner + seeAlso/category/org/orgUnit (team, role, client)
-#   patch-and-transform → workspace scaffold + common varmap   (the 4 non-role kinds)
+#   patch-and-transform → workspace scaffold + common varmap + serverRef→providerConfigRef
+#                         (the 4 non-role kinds; role wires these itself in its template)
 transformers:
 - common.yaml
+- server-ref.yaml
 - mail.yaml
 - groupofnames.yaml
 - scaffold.yaml

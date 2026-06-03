@@ -1,0 +1,51 @@
+# Universal: every kind targets an LDAP server by name via serverRef.name, which maps
+# to the Workspace's providerConfigRef.name. Defaults to "ldap" (the static
+# ProviderConfig from apps/openldap). This is the preemptive hook for a future `Server`
+# kind that will template a per-server ProviderConfig (named after the server), exactly
+# like the postgresql `Server` does — at which point serverRef.name selects which one.
+#
+# Schema goes onto ALL XRDs (no selector). The providerConfigRef patch is gated to the
+# patch-and-transform kinds; role wires providerConfigRef itself in its go-template.
+
+# --- schema: serverRef on every XRD ---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: server-ref-schema
+patch: |
+  - op: add
+    path: /spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/serverRef
+    value:
+      type: object
+      description: Which LDAP server (Crossplane ProviderConfig) to write to. Defaults to "ldap".
+      properties:
+        name:
+          type: string
+          default: ldap
+          description: Name of the OpenTofu ProviderConfig for the target LDAP server.
+target:
+  kind: CompositeResourceDefinition
+  group: apiextensions.crossplane.io
+
+# --- providerConfigRef: map serverRef.name → Workspace providerConfigRef.name (P&T kinds) ---
+---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: server-ref-providerconfig
+patch: |
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: FromCompositeFieldPath
+      fromFieldPath: spec.serverRef.name
+      toFieldPath: spec.providerConfigRef.name
+      # Optional: when serverRef is omitted, the Workspace base's providerConfigRef.name
+      # (ldap) stands. A Required policy would abort the whole composition when the
+      # field is absent, since patch-and-transform defaults don't materialize omitted
+      # parent objects.
+      policy:
+        fromFieldPath: Optional
+target:
+  kind: Composition
+  labelSelector: ldap.kubed.io/patch-and-transform=true
