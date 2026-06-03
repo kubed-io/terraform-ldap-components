@@ -17,21 +17,26 @@ requirements:
 ---
 {{- end }}
 
-{{- /* publish status from the workspace outputs once it has reconciled */ -}}
-{{- $ws := index .observed.resources "workspace" }}
+{{- /* publish status from the workspace outputs once it has reconciled.
+       .observed.resources is nil on the first pass (no composed resource yet);
+       default to an empty dict so index doesn't error on nil. */ -}}
+{{- $ws := index (.observed.resources | default dict) "workspace" }}
 {{- if and $ws $ws.resource.status.atProvider.outputs }}
+{{- $out := $ws.resource.status.atProvider.outputs }}
 apiVersion: ldap.kubed.io/v1alpha1
 kind: Role
 metadata:
   name: {{ $name }}
 status:
-  {{- with $ws.resource.status.atProvider.outputs.dn }}
+  {{- with $out.dn }}
   dn: {{ . }}
   {{- end }}
-  {{- with $ws.resource.status.atProvider.outputs.members }}
+  {{- with $out.owner }}
+  owner: {{ . }}
+  {{- end }}
+  {{- with $out.members }}
   members: {{ . | toJson }}
   {{- end }}
-  share: {{ $ws.resource.status.atProvider.outputs | toJson }}
 ---
 {{- end }}
 
@@ -64,6 +69,8 @@ metadata:
   name: {{ $name }}.roles.ldap
   annotations:
     gotemplating.fn.crossplane.io/composition-resource-name: workspace
+    # let the Workspace's own readiness drive the XR Ready condition
+    gotemplating.fn.crossplane.io/ready: "True"
     crossplane.io/external-name: {{ $name }}-role
 spec:
   providerConfigRef:

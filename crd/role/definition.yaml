@@ -52,12 +52,11 @@ spec:
               dn:
                 type: string
                 description: The full DN of the created role.
+              owner:
+                type: string
+                description: The owner DN (also the sentinel member when members is empty).
               members:
                 type: array
                 description: The resolved authoritative member DNs written to the role.
                 items:
                   type: string
-              share:
-                type: object
-                description: Freeform module outputs.
-                x-kubernetes-preserve-unknown-fields: true
