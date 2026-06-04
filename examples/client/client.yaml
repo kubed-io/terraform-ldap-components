@@ -1,13 +1,13 @@
 apiVersion: ldap.kubed.io/v1alpha1
 kind: Client
 metadata:
-  name: nextcloud
+  name: kubed-test-client
 spec:
-  baseDn: ou=clients,dc=example
-  owner: uid=nextcloud,ou=services,dc=example   # the SA that runs the app; also seed member
-  description: Nextcloud login surface
-  url: https://nextcloud.example.com
-  roles:                                         # each → cn=<name>,cn=nextcloud,ou=clients
+  baseDn: ou=clients,dc=burbs
+  owner: uid=kubed-test-sa,ou=services,dc=burbs   # the SA that runs the app; also seed member
+  description: Kubed test app login surface
+  url: https://kubed-test.example.com
+  roles:                                           # each → cn=<name>,cn=kubed-test-client,ou=clients
   - name: admin
-    description: Nextcloud administrators
-  - name: media-manager
+    description: Kubed test administrators
+  - name: viewer

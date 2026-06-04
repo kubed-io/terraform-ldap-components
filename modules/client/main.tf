@@ -2,49 +2,51 @@ locals {
   name = coalesce(var.name, terraform.workspace)
   dn   = "cn=${local.name},${var.base_dn}"
 
-  # labeledURI isn't in groupOfNames, so pull in labeledURIObject only when url is set.
-  root_object_class = concat(["groupOfNames"], var.url != null ? ["labeledURIObject"] : [])
-
   # keyed by role name for stable for_each addressing
   roles = { for r in var.roles : r.name => r }
 
-  # --- preserve externally-managed members (see team module for the rationale) ---
-  # Read CURRENT members of the root and each role child from the live server. The
-  # plural data source returns an empty list when an entry doesn't exist yet (first
-  # create), so members = owner UNION existing — TF never wipes external additions.
-  root_existing_members = try(
-    jsondecode(data.ldap_entries.root.entries[0].data_json).member,
-    [],
+  # --- ROOT object class ---------------------------------------------------
+  # The client root is a pure CONTAINER for the role children — NOT a membership
+  # group. Access to the app = "member of any client-role child" (see the IAM plan
+  # §6.0), so the root needs no `member` and is modeled as an organizationalRole
+  # (STRUCTURAL, MUST cn only — no required member). It carries the SA back-link as
+  # `roleOccupant` (organizationalRole's native "who occupies this role" DN attr).
+  #
+  # organizationalRole MAY: description, seeAlso, ou, roleOccupant (native). It does
+  # NOT define `businessCategory` (category) or `o` (org) or `labeledURI` (url), so we
+  # pull in auxiliary classes only when those are set — same pattern as the other kinds.
+  root_aux = concat(
+    var.url != null ? ["labeledURIObject"] : [],
+    (var.category != null || var.org != null) ? ["extensibleObject"] : [],
   )
-  root_members = distinct(concat([var.owner], local.root_existing_members))
-
-  role_members = {
-    for name, r in local.roles : name => distinct(concat(
-      [var.owner],
-      try(jsondecode(data.ldap_entries.role[name].entries[0].data_json).member, []),
-    ))
-  }
+  root_object_class = concat(["organizationalRole"], local.root_aux)
 
   # NOTE: cn is the RDN on the root and every role child (dn = cn=<name>,...); omitted
   # from data (server adds it implicitly; writing it makes a modify re-add it → LDAP
   # error 20 "Attribute Or Value Exists").
   root_entry = {
     objectClass      = local.root_object_class
-    owner            = [var.owner]
-    member           = local.root_members
+    roleOccupant     = [var.owner]   # the service account that runs/occupies this client
     labeledURI       = compact([var.url])
     description      = compact([var.description])
     seeAlso          = compact([var.see_also])
     businessCategory = compact([var.category])
     o                = compact([var.org])
     ou               = compact([var.org_unit])
+    # no `member` on the root — membership lives on the role children below
   }
-}
 
-# Live members of the client root (empty before it exists), searched under base_dn.
-data "ldap_entries" "root" {
-  ou     = var.base_dn
-  filter = "cn=${local.name}"
+  # --- role children: preserve externally-managed members ------------------
+  # Each role child IS a groupOfNames (MUST >=1 member). Read its CURRENT members
+  # from the live server (empty before it exists) and write owner UNION existing, so
+  # the owner seed satisfies the MUST on first create and external grants survive
+  # every reconcile (same merge as the team module).
+  role_members = {
+    for name, r in local.roles : name => distinct(concat(
+      [var.owner],
+      try(jsondecode(data.ldap_entries.role[name].entries[0].data_json).member, []),
+    ))
+  }
 }
 
 # Live members of each role child, searched under the client root DN.
@@ -59,8 +61,7 @@ resource "ldap_entry" "root" {
   data_json = jsonencode({
     for k, v in local.root_entry : k => v if length(v) > 0
   })
-  # No ignore_attributes: desired `member` always re-includes the live set (merge),
-  # so external additions survive.
+  # No `member` and nothing externally managed here — the root is pure structure.
 }
 
 resource "ldap_entry" "role" {
@@ -75,4 +76,6 @@ resource "ldap_entry" "role" {
     },
     each.value.description != null ? { description = [each.value.description] } : {},
   ))
+  # No ignore_attributes: desired `member` always re-includes the live set (merge),
+  # so external additions survive.
 }

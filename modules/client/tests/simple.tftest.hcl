@@ -20,26 +20,25 @@ run "builds_root_dn_and_class" {
     condition     = ldap_entry.root.dn == "cn=nextcloud,ou=clients,dc=example"
     error_message = "root DN should be cn=<name>,<base_dn>"
   }
+  # the root is a pure container, NOT a membership group → organizationalRole
   assert {
-    condition     = jsondecode(ldap_entry.root.data_json).objectClass == ["groupOfNames"]
-    error_message = "a bare client root is only groupOfNames (no labeledURIObject)"
+    condition     = jsondecode(ldap_entry.root.data_json).objectClass == ["organizationalRole"]
+    error_message = "a bare client root is only organizationalRole (no aux classes)"
   }
 }
 
-run "seeds_owner_on_root_when_empty" {
+run "root_is_container_not_group" {
   command = plan
 
+  # the SA back-link is roleOccupant (organizationalRole's native attr), not owner
   assert {
-    condition     = jsondecode(ldap_entry.root.data_json).member == ["uid=nextcloud,ou=services,dc=example"]
-    error_message = "owner should be the sole seed member on the root when empty"
+    condition     = jsondecode(ldap_entry.root.data_json).roleOccupant == ["uid=nextcloud,ou=services,dc=example"]
+    error_message = "the owning SA should be written as roleOccupant on the root"
   }
+  # the root carries NO member ACL — membership lives on the role children
   assert {
-    condition     = jsondecode(ldap_entry.root.data_json).owner == ["uid=nextcloud,ou=services,dc=example"]
-    error_message = "owner attribute should be written on the root"
-  }
-  assert {
-    condition     = ldap_entry.root.ignore_attributes == null
-    error_message = "root member must NOT be ignored (preserved via the ldap_entries merge)"
+    condition     = !can(jsondecode(ldap_entry.root.data_json).member)
+    error_message = "the client root must NOT carry a member list (access = any client role)"
   }
 }
 
@@ -65,6 +64,28 @@ run "url_adds_labeled_uri_object" {
   assert {
     condition     = jsondecode(ldap_entry.root.data_json).labeledURI == ["https://nextcloud.example.com"]
     error_message = "url should be written as labeledURI"
+  }
+}
+
+run "category_org_add_extensible_object" {
+  command = plan
+  variables {
+    category = "internal"
+    org      = "example-org"
+  }
+
+  # organizationalRole has no businessCategory/o → needs extensibleObject
+  assert {
+    condition     = contains(jsondecode(ldap_entry.root.data_json).objectClass, "extensibleObject")
+    error_message = "category/org must pull in the extensibleObject auxiliary class on the root"
+  }
+  assert {
+    condition     = jsondecode(ldap_entry.root.data_json).businessCategory == ["internal"]
+    error_message = "category should map to businessCategory"
+  }
+  assert {
+    condition     = jsondecode(ldap_entry.root.data_json).o == ["example-org"]
+    error_message = "org should map to o"
   }
 }
 

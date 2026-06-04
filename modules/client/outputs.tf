@@ -9,7 +9,7 @@ output "cn" {
 }
 
 output "owner" {
-  description = "The owner DN (the linked service account; also the seed member)."
+  description = "The owning service account DN — written as roleOccupant on the root and seeded as the initial member of each role child."
   value       = var.owner
 }
 
