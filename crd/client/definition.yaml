@@ -27,7 +27,7 @@ spec:
               # baseDn + description injected by the shared component
               # owner + seeAlso/category/org/orgUnit injected by the shared component (groupofnames).
               # owner is NOT required here: it may instead come from a selected ServiceAccount
-              # carrying client.keycloak.kubed.io/<client-name>/owner: "true". An explicit
+              # carrying client.ldap.kubed.io/<client-name>.owner: "true". An explicit
               # spec.owner takes precedence; otherwise the first such selected SA is the owner.
               url:
                 type: string
@@ -59,9 +59,9 @@ spec:
                 description: |
                   Selects ServiceAccount CRs (by label) whose principals are placed into this
                   client's role children. Each selected SA joins the role named in its
-                  client.keycloak.kubed.io/<client-name>/role annotation (absent -> the default
+                  client.ldap.kubed.io/<client-name>.role annotation (absent -> the default
                   role). One selected SA may also carry
-                  client.keycloak.kubed.io/<client-name>/owner: "true" to become the client
+                  client.ldap.kubed.io/<client-name>.owner: "true" to become the client
                   owner (unless spec.owner is set explicitly). Membership is merged with the
                   owner seed and any externally-added members, so declarative and ad-hoc
                   (SASL/n8n) grants coexist.

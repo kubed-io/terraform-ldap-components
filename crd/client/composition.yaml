@@ -21,8 +21,8 @@ spec:
   # STEP 0 — SELECTOR: resolve members + owner from selected ServiceAccounts, stage on status.
   # ExtraResources selects ServiceAccount by spec.serviceAccountSelector.matchLabels; for each
   # match we read status.dn + the per-client annotations:
-  #   client.keycloak.kubed.io/<client>/role  -> which role this SA joins (absent => default)
-  #   client.keycloak.kubed.io/<client>/owner -> "true" marks the owner (first wins)
+  #   client.ldap.kubed.io/<client>.role  -> which role this SA joins (absent => default)
+  #   client.ldap.kubed.io/<client>.owner -> "true" marks the owner (first wins)
   # Results are written to the XR status (selectedMembers / selectedOwner) — NOT to the
   # Workspace — so step 1 (patch-and-transform) owns the Workspace untouched. The status fields
   # MUST be declared in the XRD schema or the typed-patch apply is rejected.
@@ -37,8 +37,10 @@ spec:
         template: |
           {{- $xr     := .observed.composite.resource }}
           {{- $client := $xr.metadata.name }}
-          {{- $roleKey  := printf "client.keycloak.kubed.io/%s/role"  $client }}
-          {{- $ownerKey := printf "client.keycloak.kubed.io/%s/owner" $client }}
+          {{- /* k8s annotation keys allow ONE '/': prefix/<client>.<field> (client+field in
+                 the name segment, '.'-separated). e.g. client.ldap.kubed.io/ldap.role */}}
+          {{- $roleKey  := printf "client.ldap.kubed.io/%s.role"  $client }}
+          {{- $ownerKey := printf "client.ldap.kubed.io/%s.owner" $client }}
           {{- if $xr.spec.serviceAccountSelector }}
           apiVersion: meta.gotemplating.fn.crossplane.io/v1alpha1
           kind: ExtraResources
