@@ -23,12 +23,31 @@ EOF
 variable "roles" {
   description = <<EOF
 Client roles for this client. Each becomes a child groupOfNames at cn=<name>,cn=<client>,<base_dn>.
-The client owns the role *structure*; membership of each child is external (ignored), just
-like the root.
+The client owns the role *structure*. Membership of each child comes from three sources, merged:
+the owner seed, externally-added members (preserved via the live data lookback), and any
+`members` (below) whose `role` resolves to this child. Exactly one role may set `default: true`
+— a member with a null `role` lands there (falling back to the first role if none is flagged).
 EOF
   type = list(object({
     name        = string
     description = optional(string, null)
+    default     = optional(bool, false)
+  }))
+  default = []
+}
+
+variable "members" {
+  description = <<EOF
+Members to place into role children, resolved by the composition's serviceAccountSelector
+(an ExtraResources lookup of ServiceAccount). Each item is a principal DN plus the role it
+joins; a null `role` resolves to the client's default role (see `roles`). TF maps each member
+into the matching role child's `member` list — merged with the owner seed and any
+externally-added members, so SASL/n8n grants survive. This is the declarative half of
+membership; ad-hoc grants stay external.
+EOF
+  type = list(object({
+    dn   = string
+    role = optional(string, null)
   }))
   default = []
 }

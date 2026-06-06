@@ -3,8 +3,13 @@ kind: Composition
 metadata:
   name: clients.ldap.kubed.io
   labels:
+    # groupofnames stays for the SCHEMA patches on the definition; patch-and-transform is
+    # intentionally DROPPED here so _shared does NOT inject its composition varmap patches —
+    # this composition authors them itself (it needs a go-templating step before the patcher,
+    # which _shared's hardcoded /pipeline/0 patches can't accommodate). The definition keeps
+    # both labels, so the shared SCHEMA fields (owner/seeAlso/category/org/orgUnit/serverRef)
+    # still apply.
     ldap.kubed.io/groupofnames: "true"
-    ldap.kubed.io/patch-and-transform: "true"
 spec:
   writeConnectionSecretsToNamespace: crossplane
   compositeTypeRef:
@@ -12,7 +17,75 @@ spec:
     kind: Client
   mode: Pipeline
   pipeline:
-  - step: module
+
+  # STEP 0 — SELECTOR: resolve members + owner from selected ServiceAccounts, stage on status.
+  # ExtraResources selects ServiceAccount by spec.serviceAccountSelector.matchLabels; for each
+  # match we read status.dn + the per-client annotations:
+  #   client.keycloak.kubed.io/<client>/role  -> which role this SA joins (absent => default)
+  #   client.keycloak.kubed.io/<client>/owner -> "true" marks the owner (first wins)
+  # Results are written to the XR status (selectedMembers / selectedOwner) — NOT to the
+  # Workspace — so step 1 (patch-and-transform) owns the Workspace untouched. The status fields
+  # MUST be declared in the XRD schema or the typed-patch apply is rejected.
+  - step: select-members
+    functionRef:
+      name: go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: |
+          {{- $xr     := .observed.composite.resource }}
+          {{- $client := $xr.metadata.name }}
+          {{- $roleKey  := printf "client.keycloak.kubed.io/%s/role"  $client }}
+          {{- $ownerKey := printf "client.keycloak.kubed.io/%s/owner" $client }}
+          {{- if $xr.spec.serviceAccountSelector }}
+          apiVersion: meta.gotemplating.fn.crossplane.io/v1alpha1
+          kind: ExtraResources
+          requirements:
+            serviceaccounts:
+              apiVersion: ldap.kubed.io/v1alpha1
+              kind: ServiceAccount
+              matchLabels:
+              {{- range $k, $v := $xr.spec.serviceAccountSelector.matchLabels }}
+                {{ $k }}: "{{ $v }}"
+              {{- end }}
+          ---
+          {{- end }}
+          {{- $members := list }}
+          {{- $selOwner := "" }}
+          {{- if .extraResources }}
+          {{-   with index .extraResources "serviceaccounts" }}
+          {{-     range $e := .items }}
+          {{-       $dn := $e.resource.status.dn }}
+          {{-       if $dn }}
+          {{-         $ann  := $e.resource.metadata.annotations | default dict }}
+          {{-         $role := index $ann $roleKey }}
+          {{-         $m    := dict "dn" $dn }}
+          {{-         if $role }}{{ $m = set $m "role" $role }}{{ end }}
+          {{-         $members = append $members $m }}
+          {{-         if and (eq $selOwner "") (eq (index $ann $ownerKey | default "") "true") }}
+          {{-           $selOwner = $dn }}
+          {{-         end }}
+          {{-       end }}
+          {{-     end }}
+          {{-   end }}
+          {{- end }}
+          {{- /* owner precedence: explicit spec.owner wins; else the annotation-selected owner */}}
+          {{- $owner := $xr.spec.owner | default $selOwner }}
+          apiVersion: ldap.kubed.io/v1alpha1
+          kind: Client
+          status:
+            selectedMembers: {{ $members | toJson }}
+            {{- if ne $owner "" }}
+            selectedOwner: {{ $owner | quote }}
+            {{- end }}
+
+  # STEP 1 — BUILD: patch-and-transform assembles the Workspace and copies the staged status
+  # into the module varmap. This is the (formerly _shared) wiring, inlined so it can run AFTER
+  # the selector. spec.owner (explicit) takes precedence; only when it is absent does the
+  # selected owner (status.selectedOwner) fill varmap.owner — Optional policies make that work.
+  - step: build-workspace
     functionRef:
       name: patch-and-transform
     input:
@@ -24,11 +97,11 @@ spec:
           apiVersion: opentofu.upbound.io/v1beta1
           kind: Workspace
           metadata:
-            name: client
             annotations:
               kubernetes.io/description: |
-                Creates an app login surface (groupOfNames root + client-role children)
-                on the IAM plane. Membership is externally managed; the client holds no secret.
+                Creates an app login surface (groupOfNames root + client-role children) on the
+                IAM plane. Role membership is the union of the owner seed, externally-added
+                members, and the serviceAccountSelector-resolved members (staged on status).
           spec:
             providerConfigRef:
               name: ldap
@@ -58,7 +131,54 @@ spec:
               type: Format
               fmt: "%s-client"
 
-        # --- kind-unique varmap bindings ---
+        # client name into the module
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.varmap.name
+
+        # serverRef.name -> providerConfigRef.name (the server-ref wiring)
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.serverRef.name
+          toFieldPath: spec.providerConfigRef.name
+          policy:
+            fromFieldPath: Optional
+
+        # --- common varmap bindings (formerly _shared common/groupofnames) ---
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.baseDn
+          toFieldPath: spec.forProvider.varmap.base_dn
+          policy:
+            fromFieldPath: Required
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.description
+          toFieldPath: spec.forProvider.varmap.description
+          policy:
+            fromFieldPath: Optional
+        # NOTE: owner is NOT patched from spec.owner here — go-templating (step 0) resolves
+        # precedence (explicit spec.owner else annotation-selected) and stages it on
+        # status.selectedOwner, which the single owner patch below copies to varmap.owner.
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.seeAlso
+          toFieldPath: spec.forProvider.varmap.see_also
+          policy:
+            fromFieldPath: Optional
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.category
+          toFieldPath: spec.forProvider.varmap.category
+          policy:
+            fromFieldPath: Optional
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.org
+          toFieldPath: spec.forProvider.varmap.org
+          policy:
+            fromFieldPath: Optional
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.orgUnit
+          toFieldPath: spec.forProvider.varmap.org_unit
+          policy:
+            fromFieldPath: Optional
+
+        # --- kind-unique bindings ---
         - type: FromCompositeFieldPath
           fromFieldPath: spec.roles
           toFieldPath: spec.forProvider.varmap.roles
@@ -69,3 +189,26 @@ spec:
           toFieldPath: spec.forProvider.varmap.url
           policy:
             fromFieldPath: Optional
+
+        # --- selector results staged on status (step 0) -> module varmap ---
+        - type: FromCompositeFieldPath
+          fromFieldPath: status.selectedMembers
+          toFieldPath: spec.forProvider.varmap.members
+          policy:
+            fromFieldPath: Optional
+        # owner: go-templating already applied precedence (spec.owner else annotation-owner)
+        # into status.selectedOwner. The module's var.owner is Required, so a truly-missing
+        # owner (no spec.owner AND no annotation owner) errors at TF — the intended guard.
+        - type: FromCompositeFieldPath
+          fromFieldPath: status.selectedOwner
+          toFieldPath: spec.forProvider.varmap.owner
+          policy:
+            fromFieldPath: Optional
+
+        # --- status outputs back onto the XR (formerly _shared scaffold) ---
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.outputs
+          toFieldPath: status.share
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.outputs.dn
+          toFieldPath: status.dn

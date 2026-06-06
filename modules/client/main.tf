@@ -5,6 +5,27 @@ locals {
   # keyed by role name for stable for_each addressing
   roles = { for r in var.roles : r.name => r }
 
+  # default role for members with a null `role`: the one flagged default:true, else the
+  # first declared role (or null when there are no roles — such members are dropped).
+  default_role = try(
+    [for r in var.roles : r.name if try(r.default, false)][0],
+    try(var.roles[0].name, null),
+  )
+
+  # resolve each member to a concrete role name (null -> default), keep only those whose
+  # resolved role is an actual child, then group member DNs by role name.
+  members_resolved = [
+    for m in var.members : {
+      dn   = m.dn
+      role = coalesce(m.role, local.default_role)
+    }
+  ]
+  members_by_role = {
+    for name, _ in local.roles : name => [
+      for m in local.members_resolved : m.dn if m.role == name
+    ]
+  }
+
   # --- ROOT object class ---------------------------------------------------
   # The client root is a pure CONTAINER for the role children — NOT a membership
   # group. Access to the app = "member of any client-role child" (see the IAM plan
@@ -26,7 +47,7 @@ locals {
   # error 20 "Attribute Or Value Exists").
   root_entry = {
     objectClass      = local.root_object_class
-    roleOccupant     = [var.owner]   # the service account that runs/occupies this client
+    roleOccupant     = [var.owner] # the service account that runs/occupies this client
     labeledURI       = compact([var.url])
     description      = compact([var.description])
     seeAlso          = compact([var.see_also])
@@ -36,15 +57,18 @@ locals {
     # no `member` on the root — membership lives on the role children below
   }
 
-  # --- role children: preserve externally-managed members ------------------
-  # Each role child IS a groupOfNames (MUST >=1 member). Read its CURRENT members
-  # from the live server (empty before it exists) and write owner UNION existing, so
-  # the owner seed satisfies the MUST on first create and external grants survive
-  # every reconcile (same merge as the team module).
+  # --- role children: merge owner seed + live external members + selected members ------
+  # Each role child IS a groupOfNames (MUST >=1 member). Write the UNION of:
+  #   - the owner seed (satisfies the MUST on first create),
+  #   - the CURRENT live members read back from the server (so ad-hoc SASL/n8n grants
+  #     survive every reconcile — same merge as the team module),
+  #   - the selector-resolved `members` for this role (the declarative half).
+  # Union (not authoritative) so the declarative and external grants coexist.
   role_members = {
     for name, r in local.roles : name => distinct(concat(
       [var.owner],
       try(jsondecode(data.ldap_entries.role[name].entries[0].data_json).member, []),
+      lookup(local.members_by_role, name, []),
     ))
   }
 }
