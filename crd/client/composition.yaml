@@ -214,3 +214,11 @@ spec:
         - type: ToCompositeFieldPath
           fromFieldPath: status.atProvider.outputs.dn
           toFieldPath: status.dn
+        # the FULL merged membership + default role — published for downstream consumers
+        # (the postgresql Server selects this Client and reads these to build its role tree).
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.outputs.members
+          toFieldPath: status.members
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.outputs.default_role
+          toFieldPath: status.defaultRole

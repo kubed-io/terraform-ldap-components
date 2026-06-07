@@ -99,3 +99,24 @@ spec:
               selectedOwner:
                 type: string
                 description: Resolved owner DN (explicit spec.owner, else an annotation-selected SA).
+              # Published from the module outputs (the FULL merged membership), for downstream
+              # consumers (e.g. the postgresql Server) that build derived objects per role.
+              members:
+                type: array
+                description: |
+                  Full merged membership of every role child as { dn, role } — owner seed +
+                  external members + selector-resolved members. role = the client-role the
+                  member belongs to. Distinct from selectedMembers (selector-only).
+                items:
+                  type: object
+                  properties:
+                    dn:
+                      type: string
+                    role:
+                      type: string
+              defaultRole:
+                type: string
+                description: |
+                  The client-role designated default (default:true, else the first). Downstream:
+                  members in this role are top-level (no parent); members in other roles nest
+                  under their role.
