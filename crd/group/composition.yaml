@@ -2,9 +2,12 @@ apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
   name: groups.ldap.kubed.io
-  labels:
-    ldap.kubed.io/has-mail: "true"
-    ldap.kubed.io/patch-and-transform: "true"
+  # NO ldap.kubed.io/* labels on THIS composition: both has-mail and patch-and-transform
+  # are intentionally absent so _shared does NOT inject its composition varmap/scaffold/mail
+  # patches (they all target /spec/pipeline/0/.../patches/-, which here is the go-templating
+  # selector step — it has no patches list, so the injection would fail). This composition
+  # authors all of that wiring itself, inlined into step 1. Same approach as the client
+  # composition. The DEFINITION keeps has-mail so the shared mail SCHEMA field still applies.
 spec:
   writeConnectionSecretsToNamespace: crossplane
   compositeTypeRef:
@@ -12,7 +15,59 @@ spec:
     kind: Group
   mode: Pipeline
   pipeline:
-  - step: module
+
+  # STEP 0 — SELECTOR: resolve member uids from selected ServiceAccounts, union with the
+  # curated spec.members, stage on status.selectedMembers. ExtraResources selects
+  # ServiceAccount by spec.serviceAccountSelector.matchLabels; for each match we read the
+  # bare uid off status.share.username (no DN parsing — the SA already publishes it). The
+  # union (curated + selected) is written to status.selectedMembers — NOT the Workspace —
+  # so step 1 owns the Workspace untouched. The module then unions this with the live
+  # memberUid. The status field MUST be declared in the XRD or the typed patch is rejected.
+  - step: select-members
+    functionRef:
+      name: go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: |
+          {{- $xr := .observed.composite.resource }}
+          {{- if $xr.spec.serviceAccountSelector }}
+          apiVersion: meta.gotemplating.fn.crossplane.io/v1alpha1
+          kind: ExtraResources
+          requirements:
+            serviceaccounts:
+              apiVersion: ldap.kubed.io/v1alpha1
+              kind: ServiceAccount
+              matchLabels:
+              {{- range $k, $v := $xr.spec.serviceAccountSelector.matchLabels }}
+                {{ $k }}: "{{ $v }}"
+              {{- end }}
+          ---
+          {{- end }}
+          {{- /* curated uids straight off the CR, then add the selected SAs' usernames */}}
+          {{- $members := $xr.spec.members | default list }}
+          {{- if .extraResources }}
+          {{-   with index .extraResources "serviceaccounts" }}
+          {{-     range $e := .items }}
+          {{-       $u := $e.resource.status.share.username }}
+          {{-       if $u }}{{ $members = append $members $u }}{{ end }}
+          {{-     end }}
+          {{-   end }}
+          {{- end }}
+          {{- $members = $members | uniq }}
+          apiVersion: ldap.kubed.io/v1alpha1
+          kind: Group
+          status:
+            selectedMembers: {{ $members | toJson }}
+
+  # STEP 1 — BUILD: patch-and-transform assembles the Workspace and copies the staged
+  # status.selectedMembers (curated + selected, already unioned) into varmap.members. This
+  # is the (formerly _shared) wiring, inlined so it can run AFTER the selector — _shared's
+  # scaffold/common/mail/server-ref varmap patches are reproduced here because this
+  # composition no longer carries their labels (see the metadata comment).
+  - step: build-workspace
     functionRef:
       name: patch-and-transform
     input:
@@ -27,7 +82,9 @@ spec:
             name: group
             annotations:
               kubernetes.io/description: |
-                Creates a POSIX group (posixGroup) on the unix plane.
+                Creates a POSIX group (posixGroup) on the unix plane. memberUid is the union
+                of the curated spec.members, the serviceAccountSelector-resolved uids (staged
+                on status), and the live memberUid (merged in the module).
           spec:
             providerConfigRef:
               name: ldap
@@ -57,14 +114,51 @@ spec:
               type: Format
               fmt: "%s-group"
 
+        # --- common varmap bindings (formerly _shared common + scaffold + mail + server-ref) ---
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.varmap.name
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.baseDn
+          toFieldPath: spec.forProvider.varmap.base_dn
+          policy:
+            fromFieldPath: Required
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.description
+          toFieldPath: spec.forProvider.varmap.description
+          policy:
+            fromFieldPath: Optional
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.mail
+          toFieldPath: spec.forProvider.varmap.mail
+          policy:
+            fromFieldPath: Optional
+        # serverRef.name -> providerConfigRef.name (Optional: the base's `ldap` stands when omitted)
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.serverRef.name
+          toFieldPath: spec.providerConfigRef.name
+          policy:
+            fromFieldPath: Optional
+
         # --- kind-unique varmap bindings ---
         - type: FromCompositeFieldPath
           fromFieldPath: spec.gidNumber
           toFieldPath: spec.forProvider.varmap.gid_number
           policy:
             fromFieldPath: Required
+        # members: the selector step already unioned spec.members with the selected uids
+        # onto status.selectedMembers; copy that single list into the module varmap. The
+        # module unions it again with the live memberUid.
         - type: FromCompositeFieldPath
-          fromFieldPath: spec.members
+          fromFieldPath: status.selectedMembers
           toFieldPath: spec.forProvider.varmap.members
           policy:
             fromFieldPath: Optional
+
+        # --- status outputs back onto the XR (formerly _shared scaffold) ---
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.outputs
+          toFieldPath: status.share
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.outputs.dn
+          toFieldPath: status.dn

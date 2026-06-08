@@ -17,13 +17,14 @@ variable "gid_number" {
 
 variable "members" {
   description = <<EOF
-Curated set of bare uids (memberUid) — users and/or service accounts. A set: unordered
-and de-duplicated, matching LDAP's multi-valued memberUid, so reordering never shows as a
-diff. CRD-authoritative: the module writes the FULL set and removes anything not present
-(single writer). Posix groups are few and hand-curated, so the membership lives here, not
-in a selector. There is no referential integrity on memberUid (it is not a DN); it relies
-on the global uid-uniqueness invariant and is resolved by the consumer via a flat subtree
-search.
+Bare uids (memberUid) — users and/or service accounts. A set: unordered and de-duplicated,
+matching LDAP's multi-valued memberUid, so reordering never shows as a diff. The composition
+hands this in already merged from two sources (the CRD's curated `spec.members` and the
+serviceAccountSelector-resolved uids on `status.selectedMembers`); the module then UNIONs it
+with the live memberUid read back from the server, so ad-hoc grants survive every reconcile.
+Not authoritative — the write is the union, never a replace. There is no referential
+integrity on memberUid (it is not a DN); it relies on the global uid-uniqueness invariant and
+is resolved by the consumer via a flat subtree search.
 EOF
   type        = set(string)
   default     = []

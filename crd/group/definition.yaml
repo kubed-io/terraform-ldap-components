@@ -33,9 +33,26 @@ spec:
               members:
                 type: array
                 default: []
-                description: Curated bare uids (memberUid). CRD-authoritative.
+                description: |
+                  Curated bare uids (memberUid). Merged (not authoritative) with the
+                  serviceAccountSelector-resolved uids and the live memberUid — see the
+                  module's `members` var.
                 items:
                   type: string
+              serviceAccountSelector:
+                type: object
+                description: |
+                  Selects ServiceAccount CRs (by label) whose bare uid (status.share.username)
+                  is added to this group's memberUid. Flat: every match joins the group (no
+                  roles — posix groups are flat). The selector-resolved uids are merged with
+                  the curated `members` and the live memberUid, so declarative selection and
+                  ad-hoc grants coexist.
+                properties:
+                  matchLabels:
+                    type: object
+                    additionalProperties:
+                      type: string
+                    description: Label key/values an eligible ServiceAccount must carry.
           status:
             type: object
             description: Observed state.
@@ -47,3 +64,11 @@ spec:
                 type: object
                 description: Freeform module outputs.
                 x-kubernetes-preserve-unknown-fields: true
+              # Staging field written by the selector (go-templating) step and read back by
+              # patch-and-transform into the module varmap. MUST be declared — the typed
+              # status patch is rejected for undeclared fields.
+              selectedMembers:
+                type: array
+                description: Bare uids resolved from serviceAccountSelector (status.share.username of each match).
+                items:
+                  type: string
