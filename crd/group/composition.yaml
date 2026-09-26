@@ -33,7 +33,7 @@ spec:
       inline:
         template: |
           {{- $xr := .observed.composite.resource }}
-          {{- if $xr.spec.serviceAccountSelector }}
+          {{- if dig "serviceAccountSelector" "matchLabels" dict $xr.spec }}
           apiVersion: meta.gotemplating.fn.crossplane.io/v1alpha1
           kind: ExtraResources
           requirements:

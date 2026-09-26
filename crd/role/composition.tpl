@@ -3,7 +3,7 @@
 {{- $name := $xr.metadata.name }}
 
 {{- /* pass 1 declares the ServiceAccount requirement; pass 2 has .extraResources populated */ -}}
-{{- if $spec.serviceAccountSelector }}
+{{- if dig "serviceAccountSelector" "matchLabels" dict $spec }}
 apiVersion: meta.gotemplating.fn.crossplane.io/v1alpha1
 kind: ExtraResources
 requirements:
