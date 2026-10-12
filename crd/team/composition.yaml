@@ -36,7 +36,7 @@ spec:
               source: Remote
               # the module is pulled once per ?ref, not on every reconcile
               remotePullPolicy: IfNotPresent
-              module: github.com/kubed-io/terraform-ldap-components//modules/team?ref=v0.0.3
+              module: github.com/kubed-io/terraform-ldap-components//modules/team?ref=v0.0.4
               varmap: {}
         patches:
 
