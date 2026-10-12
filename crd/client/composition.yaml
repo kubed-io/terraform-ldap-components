@@ -109,6 +109,8 @@ spec:
               name: ldap
             forProvider:
               source: Remote
+              # the module is pulled once per ?ref, not on every reconcile
+              remotePullPolicy: IfNotPresent
               module: github.com/kubed-io/terraform-ldap-components//modules/client?ref=main
               varmap: {}
         patches:
