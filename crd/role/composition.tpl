@@ -79,5 +79,5 @@ spec:
     source: Remote
     # the module is pulled once per ?ref, not on every reconcile
     remotePullPolicy: IfNotPresent
-    module: github.com/kubed-io/terraform-ldap-components//modules/role?ref=main
+    module: github.com/kubed-io/terraform-ldap-components//modules/role?ref=v0.0.2
     varmap: {{ $varmap | toJson }}
