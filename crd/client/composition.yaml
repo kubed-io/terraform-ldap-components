@@ -135,10 +135,15 @@ spec:
               type: Format
               fmt: "%s-client"
 
-        # client name into the module
+        # client name into the module; spec.name, when set, overrides it
         - type: FromCompositeFieldPath
           fromFieldPath: metadata.name
           toFieldPath: spec.forProvider.varmap.name
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.name
+          toFieldPath: spec.forProvider.varmap.name
+          policy:
+            fromFieldPath: Optional
 
         # serverRef.name -> providerConfigRef.name (the server-ref wiring)
         - type: FromCompositeFieldPath

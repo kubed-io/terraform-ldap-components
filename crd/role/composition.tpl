@@ -54,7 +54,7 @@ status:
 
 {{- /* build the varmap from the common + groupofnames keys (role wires these itself) */ -}}
 {{- $varmap := dict
-      "name"    $name
+      "name"    ($spec.name | default $name)
       "base_dn" $spec.baseDn
       "owner"   $spec.owner
       "members" $members }}

@@ -120,6 +120,12 @@ spec:
         - type: FromCompositeFieldPath
           fromFieldPath: metadata.name
           toFieldPath: spec.forProvider.varmap.name
+        # spec.name, when set, overrides the cn above
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.name
+          toFieldPath: spec.forProvider.varmap.name
+          policy:
+            fromFieldPath: Optional
         - type: FromCompositeFieldPath
           fromFieldPath: spec.baseDn
           toFieldPath: spec.forProvider.varmap.base_dn

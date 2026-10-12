@@ -1,6 +1,6 @@
 # Opt-in (label ldap.kubed.io/patch-and-transform): the workspace wiring that is
 # IDENTICAL across the four non-role kinds:
-#   - varmap.name  ← composite metadata.name  (the bare CR name → the LDAP RDN)
+#   - varmap.name  ← composite metadata.name, then spec.name when set (the LDAP RDN)
 #   - status.share ← all module outputs
 #   - status.dn    ← the module's dn output
 #
@@ -17,6 +17,14 @@ patch: |
       type: FromCompositeFieldPath
       fromFieldPath: metadata.name
       toFieldPath: spec.forProvider.varmap.name
+  - op: add
+    path: /spec/pipeline/0/input/resources/0/patches/-
+    value:
+      type: FromCompositeFieldPath
+      fromFieldPath: spec.name
+      toFieldPath: spec.forProvider.varmap.name
+      policy:
+        fromFieldPath: Optional
   - op: add
     path: /spec/pipeline/0/input/resources/0/patches/-
     value:

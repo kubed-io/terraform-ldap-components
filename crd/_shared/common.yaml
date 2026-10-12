@@ -1,13 +1,21 @@
-# Universal: every kind has baseDn + description.
+# Universal: every kind has name + baseDn + description.
 # Schema goes onto ALL XRDs (no selector). The matching varmap patches are gated to
 # the patch-and-transform kinds (role wires these itself inside its go-template).
 
-# --- schema: baseDn + description on every XRD ---
+# --- schema: name + baseDn + description on every XRD ---
 apiVersion: builtin
 kind: PatchTransformer
 metadata:
   name: common-schema
 patch: |
+  - op: add
+    path: /spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/name
+    value:
+      type: string
+      description: |
+        The entry's name in LDAP: its cn, or uid for a ServiceAccount. Defaults to
+        metadata.name, so two resources can name the same entry under different baseDns.
+        Changing it replaces the entry.
   - op: add
     path: /spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/baseDn
     value:

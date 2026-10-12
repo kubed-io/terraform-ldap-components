@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `spec.name` on every CRD: the entry's cn (uid for a ServiceAccount), defaulting to `metadata.name`, so two resources can name the same entry under different base DNs.
+
 ## [0.0.2] - 2026-10-12
 
 ### Added
