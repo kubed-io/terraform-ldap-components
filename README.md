@@ -172,6 +172,9 @@ Each module ships `versions.tf` / `variables.tf` / `main.tf` / `outputs.tf`, a
 schema + composition wiring from `crd/_shared/` (a kustomize Component) by labeling its
 definition/composition; see that dir for the label → injection map.
 
+Releases are cut by the Publish workflow, which pins every Composition's module to the
+release's own tag, so deploy `crd/` at a tag (`?ref=vX.Y.Z`), never at `main`.
+
 
 ## References
 
