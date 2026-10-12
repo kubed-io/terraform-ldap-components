@@ -77,5 +77,7 @@ spec:
     name: {{ $spec.serverRef.name | default "ldap" }}
   forProvider:
     source: Remote
+    # the module is pulled once per ?ref, not on every reconcile
+    remotePullPolicy: IfNotPresent
     module: github.com/kubed-io/terraform-ldap-components//modules/role?ref=main
     varmap: {{ $varmap | toJson }}

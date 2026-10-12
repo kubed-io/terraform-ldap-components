@@ -1,0 +1,121 @@
+name: 🧪 Test Modules
+
+# Every module is tested on every PR, not just the changed ones: the tests run
+# against mock providers in seconds, and a PR that skips the workflow would leave
+# the required `Tested` check pending forever. `Tested` is the one check the
+# ruleset requires, so adding a module never means editing the ruleset.
+
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+    branches:
+    - main
+    # labeled/unlabeled so the `no changelog` label re-runs the changelog gate
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+
+  # The [Unreleased] section becomes the release notes at publish time.
+  changelog_check:
+    name: Changelog Updated
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+    - name: Make sure changes are logged
+      uses: tarides/changelog-check-action@v4
+      with:
+        changelog: CHANGELOG.md
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Setup OpenTofu
+      uses: opentofu/setup-opentofu@v2
+      with:
+        tofu_wrapper: false
+
+    - name: Check Formatting
+      run: tofu fmt -check -recursive -diff .
+
+  modules:
+    name: Find Modules
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: List Modules
+      id: matrix
+      run: |
+        MODULES=$(find modules -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | jq -Rcs 'split("\n") | map(select(length > 0))')
+        echo "matrix=${MODULES}" >> "$GITHUB_OUTPUT"
+        echo "Modules to test: ${MODULES}" >> "$GITHUB_STEP_SUMMARY"
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: modules
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJSON(needs.modules.outputs.matrix) }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Setup OpenTofu
+      uses: opentofu/setup-opentofu@v2
+      with:
+        tofu_wrapper: false
+
+    - name: Validate Module
+      working-directory: modules/${{ matrix.module }}
+      run: |
+        tofu init -backend=false -input=false
+        tofu validate
+
+    - name: Test Module
+      working-directory: modules/${{ matrix.module }}
+      run: tofu test
+
+    - name: Validate Example
+      env:
+        EXAMPLE: examples/${{ matrix.module }}
+      run: |
+        if [[ ! -f "$EXAMPLE/main.tf" ]]; then
+          echo "No terraform example for ${{ matrix.module }}, skipping."
+          exit 0
+        fi
+        cd "$EXAMPLE"
+        tofu init -backend=false -input=false
+        tofu validate
+
+  # The required check. `always()` so a failed or cancelled dependency is a red
+  # check here, not a skipped one, which the ruleset would count as passing.
+  tested:
+    name: Tested
+    runs-on: ubuntu-latest
+    needs:
+    - fmt
+    - test
+    if: always()
+    steps:
+    - name: Check Results
+      env:
+        FMT: ${{ needs.fmt.result }}
+        TEST: ${{ needs.test.result }}
+      run: |
+        echo "fmt: ${FMT}, test: ${TEST}"
+        [[ "$FMT" == "success" && "$TEST" == "success" ]]

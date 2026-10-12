@@ -1,0 +1,175 @@
+name: 🧁 Publish Version
+
+# Manual release: rolls CHANGELOG [Unreleased] into a version, pins every crd/
+# Composition to that version's modules, tags main, and cuts a GitHub Release.
+# Run with push=false first: it runs the tests and prints the version and pins it
+# would cut without writing anything.
+#
+# The kubed.io App token (org GH_CLIENT_ID / GH_APP_KEY) is what lets version-bump
+# commit to protected main, as a bypass actor on the default ruleset, and push the tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Version to bump to
+        default: patch
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+        - premajor
+        - preminor
+        - prepatch
+      push:
+        description: Push changes and create release
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+
+  test:
+    name: Test
+    uses: ./.github/workflows/test.yml
+
+  bump:
+    name: Bump Version
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # commit the rolled CHANGELOG, push the tag, create the release
+    steps:
+
+    - name: Validate Branch
+      if: inputs.push
+      env:
+        REF: ${{ github.ref_name }}
+      run: |
+        if [[ "$REF" != "main" ]]; then
+          echo "::error::Releases can only be pushed from main. Current ref: $REF"
+          exit 1
+        fi
+
+    - name: Create GitHub App Token
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ vars.GH_CLIENT_ID }}
+        private-key: ${{ secrets.GH_APP_KEY }}
+        permission-contents: write
+
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        token: ${{ steps.app-token.outputs.token }}
+
+    # The same semver library and rules version-bump uses (highest v* tag, seeded
+    # with 0.0.1). It is handed to version-bump explicitly, so the two cannot differ.
+    - name: Next Version
+      id: next
+      env:
+        ACTION: ${{ inputs.action }}
+      run: |
+        LAST=$(npx --yes semver@7.7.2 0.0.1 $(git tag --list 'v*' | sed 's/^v//') | tail -n 1)
+        NEXT=$(npx --yes semver@7.7.2 -i "$ACTION" "$LAST")
+        echo "v${LAST} -> v${NEXT}"
+        echo "version=${NEXT}" >> "$GITHUB_OUTPUT"
+        echo "tag=v${NEXT}" >> "$GITHUB_OUTPUT"
+
+    # A release's Compositions run that release's modules, so crd/?ref=<tag> deploys
+    # exactly what was tested. The files ride in the version commit the tag points at.
+    - name: Pin Modules
+      id: pin
+      env:
+        TAG: ${{ steps.next.outputs.tag }}
+        REPO: ${{ github.repository }}
+      run: |
+        if ! FILES=$(grep -rl "github.com/${REPO}//modules/" crd); then
+          echo "::error::No file under crd/ references github.com/${REPO}//modules/"
+          exit 1
+        fi
+        sed -i -E "s#(github\.com/${REPO}//modules/[^?]+\?ref=)[^[:space:]\"']+#\1${TAG}#g" $FILES
+        if grep -rnE "github\.com/${REPO}//modules/[^?]+\?ref=" crd | grep -v "?ref=${TAG}\b"; then
+          echo "::error::Some module refs above were not pinned to ${TAG}"
+          exit 1
+        fi
+        git diff --stat -- crd
+        {
+          echo "files<<EOF"
+          git diff --name-only -- crd
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Bump Version
+      id: bump
+      uses: duplocloud/version-bump@main
+      with:
+        token: ${{ steps.app-token.outputs.token }}
+        version: ${{ steps.next.outputs.version }}
+        files: ${{ steps.pin.outputs.files }}
+        push: ${{ inputs.push }}
+
+    # An empty body sails through a green run, so it fails here instead.
+    - name: Check Release Notes
+      env:
+        NOTES: ${{ steps.bump.outputs.release-notes }}
+      run: |
+        if [[ -z "$(tr -d '[:space:]' <<< "$NOTES")" ]]; then
+          echo "::error::The release notes came back empty. Is CHANGELOG [Unreleased] empty?"
+          exit 1
+        fi
+
+    - name: Create Release
+      id: release
+      if: inputs.push
+      uses: softprops/action-gh-release@v3.0.3
+      with:
+        token: ${{ steps.app-token.outputs.token }}
+        name: ${{ steps.bump.outputs.tag }}
+        tag_name: ${{ steps.bump.outputs.tag }}
+        prerelease: ${{ contains(steps.bump.outputs.tag, '-') }}
+        body: |
+          [![Publish](${{ github.server_url }}/${{ github.repository }}/actions/workflows/publish.yml/badge.svg)](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          ${{ steps.bump.outputs.release-notes }}
+
+          ## Usage
+
+          ```hcl
+          module "service_account" {
+            source = "git::${{ github.server_url }}/${{ github.repository }}.git//modules/service-account?ref=${{ steps.bump.outputs.tag }}"
+          }
+          ```
+
+          ```yaml
+          # kustomization.yaml: the CRDs, each Composition pinned to this release's modules
+          resources:
+          - ${{ github.server_url }}/${{ github.repository }}//crd/?ref=${{ steps.bump.outputs.tag }}
+          ```
+
+    - name: Summary
+      env:
+        RELEASE_NOTES: ${{ steps.bump.outputs.release-notes }}
+        NEW_VERSION: ${{ steps.bump.outputs.version }}
+        PREVIOUS_VERSION: ${{ steps.bump.outputs.previous-version }}
+        PINNED: ${{ steps.pin.outputs.files }}
+        URL: ${{ steps.release.outputs.url || 'dry run, no release' }}
+      run: |
+        cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+        New Version: ${NEW_VERSION}
+        Previous Version: ${PREVIOUS_VERSION}
+        Release: ${URL}
+
+        ## Pinned Compositions:
+        --------------
+        ${PINNED}
+
+        ## Release Notes:
+        --------------
+        ${RELEASE_NOTES}
+        EOF
