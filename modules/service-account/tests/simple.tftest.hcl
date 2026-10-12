@@ -90,9 +90,10 @@ run "uses_supplied_password" {
     condition     = length(random_password.this) == 0
     error_message = "no password should be generated when one is supplied"
   }
+  # the {SHA512} slappasswd makes for the same value, computed outside tofu
   assert {
-    condition     = jsondecode(ldap_entry.this.data_json).userPassword == ["byo-secret-password"]
-    error_message = "the supplied password should be written verbatim"
+    condition     = jsondecode(ldap_entry.this.data_json).userPassword == ["{SHA512}OYCKfhuhuVefVGz8yBX+o6QKAWhqUrnhhWlWeLC2YRIE3Ype9TqJKRYOJSNZ592ZTJblruMrzcWzNXkvkSWqgg=="]
+    error_message = "the supplied password should be stored as {SHA512}"
   }
   assert {
     condition     = output.password == null
@@ -133,5 +134,41 @@ run "writes_optional_attrs_when_set" {
   assert {
     condition     = jsondecode(ldap_entry.this.data_json).loginShell == ["/bin/bash"]
     error_message = "explicit loginShell should override the default"
+  }
+}
+
+run "stores_cleartext_when_asked" {
+  command = plan
+  variables {
+    password = "byo-secret-password"
+    password_policy = {
+      scheme = "cleartext"
+    }
+  }
+
+  assert {
+    condition     = jsondecode(ldap_entry.this.data_json).userPassword == ["byo-secret-password"]
+    error_message = "scheme cleartext should write the password verbatim"
+  }
+}
+
+run "hashes_the_generated_password" {
+  command = apply
+
+  override_resource {
+    target = random_password.this
+    values = {
+      result = "generated-secret-value-0001"
+    }
+  }
+
+  assert {
+    condition     = jsondecode(ldap_entry.this.data_json).userPassword == ["{SHA512}S+U7cinXKsGvwpDMX+cQ11hvuF0enfwBvQL7CGkvUfkhSCjam+KDXHATF/S/F15dtPCD6YUFOdDKDbFE8DQjYQ=="]
+    error_message = "the generated password should be stored as {SHA512}"
+  }
+  # consumers bind with the secret's password, so the output stays the plain value
+  assert {
+    condition     = output.password == "generated-secret-value-0001"
+    error_message = "the password output should be the plain generated value"
   }
 }

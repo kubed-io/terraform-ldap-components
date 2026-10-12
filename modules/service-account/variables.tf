@@ -49,9 +49,12 @@ EOF
 variable "password_policy" {
   description = <<EOF
 Generation policy for the account's userPassword, passed straight to the random_password
-resource. Ignored when `password` is supplied. Defaults are production-safe: 16 chars
-with at least one of every character class, and a shell-safe special set (no quotes,
+resource. Ignored when `password` is supplied, except `scheme`. Defaults are production-safe:
+16 chars with at least one of every character class, and a shell-safe special set (no quotes,
 backslash, backtick, or $ that break in env files). Tune per account if needed.
+
+`scheme` is how the userPassword is stored, generated or supplied: `sha512` ({SHA512}, needs
+the pw-sha2 module on the server) or `cleartext`.
 EOF
   type = object({
     length          = optional(number, 16)
@@ -64,8 +67,14 @@ EOF
     minUpper        = optional(number, 1)
     minLower        = optional(number, 1)
     overrideSpecial = optional(string, "!#%&*()-_=+[]{}<>:?")
+    scheme          = optional(string, "sha512")
   })
   default = {}
+
+  validation {
+    condition     = contains(["sha512", "cleartext"], var.password_policy.scheme)
+    error_message = "password_policy.scheme must be sha512 or cleartext."
+  }
 
   validation {
     condition     = var.password_policy.length >= 16

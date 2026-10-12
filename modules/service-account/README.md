@@ -36,13 +36,17 @@ is written by a [`Group`](../group), never here.
 
 By default the module **generates** the `userPassword` and exposes it as the
 sensitive `password` output. To **bring your own** (e.g. a password already stored
-elsewhere), set `password`: the module writes it verbatim, ignores `password_policy`,
-and the `password` output is `null` (the caller already has it).
+elsewhere), set `password`: the module ignores `password_policy` (except `scheme`), and
+the `password` output is `null` (the caller already has it).
+
+Either way the entry stores `{SHA512}` of the password, which slapd verifies with its
+`pw-sha2` module. The `password` output stays the plain value. `scheme = "cleartext"`
+stores it as-is instead.
 
 ### `password_policy`
 
-Passed straight to the [`random_password`][random_password] resource. Ignored when
-`password` is supplied. Defaults are
+Passed straight to the [`random_password`][random_password] resource, except `scheme`.
+Ignored when `password` is supplied, except `scheme`. Defaults are
 production-safe — 16 characters with at least one of every character class, and a
 shell-safe special set (no quotes, backslash, backtick, or `$` that break in env
 files). `length` is validated to be `>= 16`.
@@ -53,6 +57,7 @@ files). `length` is validated to be `>= 16`.
 | `special` / `numeric` / `upper` / `lower` | `true` |
 | `minSpecial` / `minNumeric` / `minUpper` / `minLower` | `1` |
 | `overrideSpecial` | `!#%&*()-_=+[]{}<>:?` |
+| `scheme` | `sha512` (or `cleartext`) |
 
 ## Outputs
 

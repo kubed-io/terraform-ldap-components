@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `service-account` stores `userPassword` as `{SHA512}` by default (the server needs the `pw-sha2` module); `password_policy.scheme = "cleartext"` keeps the old form. Switching scheme never regenerates the password.
+
 ## [0.0.3] - 2026-10-12
 
 ### Added

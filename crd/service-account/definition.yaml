@@ -63,7 +63,9 @@ spec:
               passwordPolicy:
                 type: object
                 nullable: true
-                description: Generation policy for the userPassword (ignored when password is set).
+                description: |
+                  Generation policy for the userPassword. Ignored when password is set, except
+                  scheme, which applies to both.
                 properties:
                   length:
                     type: integer
@@ -85,6 +87,14 @@ spec:
                     type: integer
                   overrideSpecial:
                     type: string
+                  scheme:
+                    type: string
+                    enum:
+                    - sha512
+                    - cleartext
+                    description: |
+                      How userPassword is stored: sha512 ({SHA512}, needs the server's pw-sha2
+                      module; the default) or cleartext. The secret's password is the same either way.
               connectionSecret:
                 type: object
                 nullable: true

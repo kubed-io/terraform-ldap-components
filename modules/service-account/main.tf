@@ -6,7 +6,14 @@ locals {
   home_directory = coalesce(var.posix.homeDirectory, "/home/${local.name}")
 
   generate_password = var.password == null
-  user_password     = local.generate_password ? random_password.this[0].result : var.password
+  raw_password      = local.generate_password ? random_password.this[0].result : var.password
+  # Unsalted, which is enough for a long random secret; slapd verifies it with pw-sha2.
+  # scheme is not an input of random_password, so changing it never regenerates the password.
+  user_password = (
+    var.password_policy.scheme == "sha512"
+    ? "{SHA512}${base64sha512(local.raw_password)}"
+    : local.raw_password
+  )
 
   # inetOrgPerson + posixAccount carry every attribute below as MAY/MUST, so no
   # auxiliary objectClass is needed (description and mail are both MAY on

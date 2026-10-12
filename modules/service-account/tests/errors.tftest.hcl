@@ -29,3 +29,14 @@ run "rejects_short_password" {
   }
   expect_failures = [var.password_policy]
 }
+
+run "rejects_unknown_scheme" {
+  command = plan
+  variables {
+    name = "myapp"
+    password_policy = {
+      scheme = "md5"
+    }
+  }
+  expect_failures = [var.password_policy]
+}
